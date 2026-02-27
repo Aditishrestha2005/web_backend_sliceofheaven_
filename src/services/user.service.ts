@@ -3,7 +3,9 @@ import { UserRepository } from "../repositories/user.repository";
 import bcryptjs from "bcryptjs";
 import { HttpError } from "../error/http-error";
 import jwt from "jsonwebtoken";
+import { CLIENT_URL } from "../config";
 import { JWT_SECRET } from "../config";
+import { sendEmail } from "../config/email";
 
 const userRepository = new UserRepository();
 
@@ -95,4 +97,69 @@ export class UserService {
     const updatedUser = await userRepository.updateUser(userId, data);
     return updatedUser;
   }
+async sendResetPasswordEmail(email?: string) {
+  if (!email) {
+    throw new HttpError(400, "Email is required");
+  }
+
+  const normalizedEmail = String(email).trim().toLowerCase();
+
+  // ✅ SECURITY: do not reveal if user exists
+  const user = await userRepository.getUserByEmail(normalizedEmail);
+  if (!user) {
+    return true; // pretend success
+  }
+
+  const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: "1h" });
+
+  // ✅ Make link match param-style route
+  // Frontend page can read token from URL param
+  const resetLink = `${CLIENT_URL}/reset-password?token=${token}`;
+
+  const html = `
+    <p>Click the link below to reset your password (valid for 1 hour):</p>
+    <p><a href="${resetLink}">${resetLink}</a></p>
+  `;
+
+  await sendEmail(user.email, "Password Reset", html);
+  return true;
 }
+
+async resetPassword(token?: string, newPassword?: string) {
+  if (!token || !newPassword) {
+    throw new HttpError(400, "Token and new password are required");
+  }
+
+  const pwd = String(newPassword).trim();
+  if (pwd.length < 6) {
+    throw new HttpError(400, "Password must be at least 6 characters");
+  }
+
+  let decoded: any;
+  try {
+    decoded = jwt.verify(token, JWT_SECRET);
+  } catch {
+    throw new HttpError(400, "Invalid or expired token");
+  }
+
+  const userId = decoded?.id;
+  if (!userId) {
+    throw new HttpError(400, "Invalid token payload");
+  }
+
+  const hashedPassword = await bcryptjs.hash(pwd, 10);
+  const updatedUser = await userRepository.updateUser(userId, {
+    password: hashedPassword,
+  });
+
+  if (!updatedUser) {
+    throw new HttpError(404, "User not found");
+  }
+
+  return true;
+}
+
+}
+
+
+
