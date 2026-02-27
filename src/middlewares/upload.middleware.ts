@@ -1,46 +1,51 @@
 import multer from "multer";
-import { v4 as uuidv4 } from "uuid";
-import { Request } from "express";
 import path from "path";
 import fs from "fs";
+import { Request } from "express";
 import { HttpError } from "../error/http-error";
 
+// ✅ FIXED uuid import for CommonJS + ts-node
+const { v4: uuidv4 } = require("uuid");
 
-// Storage config
+// ✅ backend/uploads/profilepicture
+const uploadDir = path.join(process.cwd(), "uploads/profilepicture");
+
 const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadPath = path.join(__dirname, "../../uploads/profile_pictures");
-        if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-        }
-        cb(null, uploadPath);
-    },
-    filename: function (req, file, cb) {
-        const fileSuffix = uuidv4();
-        const ext = path.extname(file.originalname);
-        cb(null, `pro-pic-${fileSuffix}${ext}`);
+  destination: function (req, file, cb) {
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
     }
+    cb(null, uploadDir);
+  },
+
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    cb(null, `${uuidv4()}${ext}`);
+  },
 });
 
-// File filter
-const fileFilter = (req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-    if (file.mimetype.startsWith("image/")) {
-        cb(null, true);
-    } else {
-        cb(new HttpError(400, "Invalid file type, only images are allowed!"));
-    }
+const fileFilter = (
+  req: Request,
+  file: Express.Multer.File,
+  cb: multer.FileFilterCallback
+) => {
+  if (file.mimetype.startsWith("image/")) {
+    cb(null, true);
+  } else {
+    cb(new HttpError(400, "Only image files are allowed"));
+  }
 };
 
-// Multer instance
 const upload = multer({
-    storage,
-    limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
-    fileFilter
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  fileFilter,
 });
 
-// Export helpers
 export const uploads = {
-    single: (fieldName: string) => upload.single(fieldName),
-    array: (fieldName: string, maxCount: number) => upload.array(fieldName, maxCount),
-    fields: (fieldsArray: { name: string; maxCount?: number }[]) => upload.fields(fieldsArray)
+  single: (fieldName: string) => upload.single(fieldName),
+  array: (fieldName: string, maxCount: number) =>
+    upload.array(fieldName, maxCount),
+  fields: (fieldsArray: { name: string; maxCount?: number }[]) =>
+    upload.fields(fieldsArray),
 };
